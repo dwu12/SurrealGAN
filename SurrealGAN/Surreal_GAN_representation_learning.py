@@ -53,7 +53,8 @@ def representation_result(output_dir, npattern, data, final_saving_epoch, saving
 	if os.path.exists("%s/model_agreements.csv" % output_dir):
 		agreement_f = pd.read_csv(os.path.join(output_dir,'model_agreements.csv'))
 		if agreement_f['epoch'].max() < final_saving_epoch and (not (agreement_f['stop'] == 'yes').any()):
-			raise Exception("Waiting for other repetitions to finish to derive the final R-indices")
+			print("Waiting for other repetitions to finish to derive the final R-indices")
+			return 'Not generate result'
 		best_row = agreement_f.iloc[agreement_f['Rindices_corr'].idxmax()]
 		if repetition > 3:
 			max_index = best_row['best_model']
@@ -63,9 +64,11 @@ def representation_result(output_dir, npattern, data, final_saving_epoch, saving
 			validation_data = parse_validation_data(data, covariate,model.opt.correction_variables,model.opt.normalization_variables)[1]
 			r_indices = model.predict_rindices(validation_data)	
 		else:
-			raise Exception("At least 10 trained models are required (repetition number need to be at least 10)")
+			print("At least 10 trained models are required (repetition number need to be at least 10)")
+			return 'Not generate result'
 	else:
-		raise Exception("Waiting for other repetitions to finish to derive the final R-indices")
+		print("Waiting for other repetitions to finish to derive the final R-indices")
+		return 'Not generate result'
 	return np.array(r_indices), best_row['best_dimension_corr'], best_row['best_difference_corr'],  best_row['dimension_corr'], best_row['difference_corr'], best_row['epoch'], best_model_dir
 
 
@@ -128,21 +131,27 @@ def repetitive_representation_learning(data, npattern, repetition, fraction, fin
 			print("****** Model not converged at max interation, Start retraining ******")
 			converge = Surreal_GAN_model.train(data, covariate, output_dir, random_seed=i, data_fraction = fraction, verbose = verbose)
 
-	r_indices, selected_model_dimension_corr, selected_model_difference_corr, dimension_corr, difference_corr, best_epoch, selected_model_dir = representation_result(output_dir, npattern, data, final_saving_epoch, saving_freq, repetition, covariate = covariate)
-	
-	pt_data = data.loc[data['diagnosis'] == 1][['participant_id','diagnosis']]
 
-	for i in range(npattern):
-		pt_data['r'+str(i+1)] = r_indices[:,i]
-
-	pt_data["Rindices-corr" ] = ["%.3f" %((dimension_corr+difference_corr)/2)]+['' for _ in range(r_indices.shape[0]-1)]
-	pt_data["best epoch" ] = [best_epoch]+['' for _ in range(r_indices.shape[0]-1)]
-	pt_data["path to selected model"] = [selected_model_dir]+['' for _ in range(r_indices.shape[0]-1)]
-	pt_data["selected model Rindices-corr"] = ["%.3f" %((selected_model_dimension_corr+selected_model_difference_corr)/2)]+['' for _ in range(r_indices.shape[0]-1)]
-	pt_data["dimension-corr" ] = ["%.3f" %(dimension_corr)]+['' for _ in range(r_indices.shape[0]-1)]
-	pt_data["difference-corr" ] = ["%.3f" %(difference_corr)]+['' for _ in range(r_indices.shape[0]-1)]
-	pt_data["selected model dimension-corr"] = ["%.3f" %(selected_model_dimension_corr)]+['' for _ in range(r_indices.shape[0]-1)]
-	pt_data["selected model difference-corr"] = ["%.3f" %(selected_model_difference_corr)]+['' for _ in range(r_indices.shape[0]-1)]
+	result = representation_result(output_dir, npattern, data, final_saving_epoch, saving_freq, repetition, covariate = covariate)
 	
-	pt_data.to_csv(os.path.join(output_dir,'representation_result.csv'), index = False)
-	print('****** Surreal-GAN Representation Learning finished ******')
+	if not isinstance(result, str):
+		r_indices, selected_model_dimension_corr, selected_model_difference_corr, dimension_corr, difference_corr, best_epoch, selected_model_dir = result
+		
+		pt_data = data.loc[data['diagnosis'] == 1][['participant_id','diagnosis']]
+
+		for i in range(npattern):
+			pt_data['r'+str(i+1)] = r_indices[:,i]
+
+		pt_data["Rindices-corr" ] = ["%.3f" %((dimension_corr+difference_corr)/2)]+['' for _ in range(r_indices.shape[0]-1)]
+		pt_data["best epoch" ] = [best_epoch]+['' for _ in range(r_indices.shape[0]-1)]
+		pt_data["path to selected model"] = [selected_model_dir]+['' for _ in range(r_indices.shape[0]-1)]
+		pt_data["selected model Rindices-corr"] = ["%.3f" %((selected_model_dimension_corr+selected_model_difference_corr)/2)]+['' for _ in range(r_indices.shape[0]-1)]
+		pt_data["dimension-corr" ] = ["%.3f" %(dimension_corr)]+['' for _ in range(r_indices.shape[0]-1)]
+		pt_data["difference-corr" ] = ["%.3f" %(difference_corr)]+['' for _ in range(r_indices.shape[0]-1)]
+		pt_data["selected model dimension-corr"] = ["%.3f" %(selected_model_dimension_corr)]+['' for _ in range(r_indices.shape[0]-1)]
+		pt_data["selected model difference-corr"] = ["%.3f" %(selected_model_difference_corr)]+['' for _ in range(r_indices.shape[0]-1)]
+		
+		pt_data.to_csv(os.path.join(output_dir,'representation_result.csv'), index = False)
+		print('****** Surreal-GAN Representation Learning finished ******')
+	else:
+		print('Waiting for all models to be finished')
